@@ -1,2 +1,2 @@
-boto==2.48.0
-configparser==3.5.0
+boto>=2.48.0,<3.0.0
+configparser>=3.5.0,<4.0.0
