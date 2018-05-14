@@ -216,7 +216,9 @@ def update_aws_creds(aws_creds, profile, sts_creds):
 
     aws_creds[sts_profile]['aws_access_key_id'] = sts_creds.access_key
     aws_creds[sts_profile]['aws_secret_access_key'] = sts_creds.secret_key
+    # support both session and security keys as various utilities require one or the other
     aws_creds[sts_profile]['aws_session_token'] = sts_creds.session_token
+    aws_creds[sts_profile]['aws_security_token'] = sts_creds.session_token
 
     return aws_creds
 
