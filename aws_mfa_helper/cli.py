@@ -23,12 +23,18 @@ import argparse
 import configparser
 import logging
 import signal
-import subprocess
 import sys
-from distutils.spawn import find_executable
-
 from boto.sts import STSConnection
 from os.path import expanduser, join
+
+import aws_mfa_helper
+
+# optional requirement
+try:
+    from totp_generator.core_utils import KeyringTotpGenerator
+
+except ImportError:
+    pass
 
 # backwards compatibility for py2
 try:
@@ -36,14 +42,11 @@ try:
 except NameError:
     pass
 
-PROGNAME = 'AWS MFA Helper'
-VERSION = '1.0.0'
+PROGNAME = aws_mfa_helper.__progname__
+VERSION = aws_mfa_helper.__version__
 MFA_SERIAL_CONFIG_KEY = 'helper_mfa_serial'
 TOTP_SERVICE_CONFIG_KEY = 'helper_totp_service_name'
-
-# change this to suit your env
 MFA_CREDS_SUFFIX = '-mfa'
-DEFAULT_REGION = 'eu-west-1'
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger()
@@ -71,7 +74,6 @@ def profile_selection(aws_creds):
     """
     choices = list()
     i = 0
-
     for key, key_val in aws_creds.items():
         if not key.endswith(MFA_CREDS_SUFFIX) and key is not 'DEFAULT':
             i += 1
@@ -118,16 +120,15 @@ def duration_selection():
     return user_in
 
 
-def mfa_entry(TOTP_GEN_PATH, aws_conf, profile):
+def mfa_entry(aws_conf, profile):
     """
     Try to generate TOTP code if totp_generator is installed. Otherwise prompt user for code.
 
-    :param TOTP_GEN_PATH: path to totp_generatior
     :param aws_conf: AWS config configparser.ConfigParser object
     :param profile: Name of AWS config profile
     :return: Six digit MFA code as string
     """
-    if TOTP_GEN_PATH:
+    if 'totp_generator.core_utils' in sys.modules:
         try:
             # totp_generator is installed.
             full_profile = 'profile {n}'.format(n=profile)
@@ -136,8 +137,7 @@ def mfa_entry(TOTP_GEN_PATH, aws_conf, profile):
             except KeyError:
                 raise KeyError('{k} was not found in AWS config. Cannot auto-generate TOTP code'.format(
                     k=TOTP_SERVICE_CONFIG_KEY))
-            cmd = TOTP_GEN_PATH, '-s', totp_service
-            code = str(subprocess.check_output(cmd).decode("utf-8")).strip()
+            code = KeyringTotpGenerator().get_totp_code(totp_service)
             logger.debug('Got TOTP code from totp_generator')
 
             return code
@@ -249,6 +249,28 @@ def save_aws_creds(aws_creds_file, config):
     return
 
 
+def load_helper_config(home):
+    """
+    Load aws helper config.
+    :param home: path to user home
+    :return: None
+    """
+    file_path = join(home, '.aws_mfa_helper.cfg')
+    try:
+        config = read_aws_file(file_path)
+        logger.debug('Loaded helper config.')
+
+        if config.get('mfa_creds_suffix'):
+            logger.debug('Setting MFA_CREDS_SUFFIX to {s}'.format(s=config['mfa_creds_suffix']))
+
+            global MFA_CREDS_SUFFIX
+            MFA_CREDS_SUFFIX = config['mfa_creds_suffix']
+    except Exception:
+        pass
+
+    return
+
+
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     parser = argparse.ArgumentParser(description='AWS MFA Helper\n\n' +
@@ -270,9 +292,9 @@ def main():
     aws_creds_file = join(user_home, '.aws', 'credentials')
     aws_config_file = join(user_home, '.aws', 'config')
 
-    TOTP_GEN_PATH = None
-    TOTP_GEN_PATH = find_executable('totp_generator')
-    if TOTP_GEN_PATH:
+    load_helper_config(user_home)
+
+    if 'totp_generator.core_utils' in sys.modules:
         logger.debug('totp_generatior is installed. Will attempt to automate TOTP generation.')
 
     print('AWS MFA Helper\n')
@@ -286,7 +308,7 @@ def main():
 
     duration = duration_selection()
 
-    mfa_code = mfa_entry(TOTP_GEN_PATH, aws_conf, profile)
+    mfa_code = mfa_entry(aws_conf, profile)
 
     sts_creds = get_sts_creds(profile, duration, device_id, mfa_code)
 
