@@ -1,3 +1,5 @@
+![Dependancy Status](https://pyup.io/repos/github/jjfalling/TOTP-Generator/shield.svg)
+
 # AWS MFA Helper
 Automate obtaining MFA (STS) credentials
 
