@@ -15,6 +15,6 @@ helper_totp_service_name = (Optional: service name in TOTP Generatior)
 ```
 
 
-You can install the python dependencies with `pip install -r requirements.txt`.
+You can install this utility with `pip install AWS-MFA-Helper`.
 
 Run with the --help flag for more information.
